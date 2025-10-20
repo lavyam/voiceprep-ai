@@ -1,7 +1,41 @@
-# New: Resume + JD Upload Flow
+# 🗣️ VoicePrep AI – AI-Powered Voice Interview Practice Agent  
 
-- `POST /api/match/upload` (multipart form): fields `resume` (file), `jd` (file), `company` (form), `role` (form)
-  - Returns `match_id`, keyword overlap, and a `coverage_score` (0..1).
-- `GET /api/briefs/{session_id}.pdf?...&match_id=...` will embed overlap keywords and score in the PDF brief.
+> “Improve your delivery, structure, and clarity — not just your content.”
 
-Note: For demo speed, PDF/DOCX parsing is not included; text files work best. Plug in real parsers later.
+VoicePrep AI is a **voice-enabled interview-practice agent** that helps users improve how they *sound* in interviews.  
+It listens to your answers, analyzes **clarity**, **structure**, and **coverage**, and gives personalized feedback.  
+Built with **FastAPI**, **spaCy**, and **scikit-learn**, it offers real-time, rubric-based coaching for interview readiness.
+
+🌐 **Live Demo:** [https://voiceprep-ai-1.onrender.com](https://voiceprep-ai-1.onrender.com)  
+
+
+---
+
+## Features
+
+### Real-Time Interview Practice
+- Speak directly through a simple browser interface.  
+- System transcribes and scores your spoken answer.
+
+### Smart Feedback Engine
+- **spaCy** for linguistic clarity and tone analysis.  
+- **TF-IDF + Cosine Similarity** (scikit-learn) to measure structure and coverage.  
+- Generates actionable tips such as “Add a concrete example” or “Tighten your intro.”
+
+### Rubric-Based Scoring
+| Criterion | What it Measures |
+|------------|------------------|
+| **Clarity** | Conciseness and intelligibility |
+| **Structure** | Logical flow, transitions, conclusion |
+| **Coverage** | Completeness and relevance |
+
+### 🧩 Modular Architecture
+- Organized routers (`live.py`, `match.py`, `qa.py`, etc.)  
+- Configurable scoring weights and rubric logic  
+- Graceful error handling and conversational state retention  
+
+---
+
+## 🏗️ Architecture
+
+![System Diagram](assets/architecture.png)
