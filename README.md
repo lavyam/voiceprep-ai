@@ -6,8 +6,18 @@ VoicePrep AI is a **voice-enabled interview-practice agent** that helps users im
 It listens to your answers, analyzes **clarity**, **structure**, and **coverage**, and gives personalized feedback.  
 Built with **FastAPI**, **spaCy**, and **scikit-learn**, it offers real-time, rubric-based coaching for interview readiness.
 
-🌐 **Live Demo:** [https://voiceprep-ai-1.onrender.com](https://voiceprep-ai-1.onrender.com)  
+ **Live Demo:** [https://voiceprep-ai-1.onrender.com](https://voiceprep-ai-1.onrender.com)  
 
+Or Run Locally
+
+```bash
+git clone https://github.com/lavyam/voiceprep-ai.git
+cd voiceprep-ai
+python -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+uvicorn app.main:app --reload
+```
 
 ---
 
