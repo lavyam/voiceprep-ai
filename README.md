@@ -38,4 +38,4 @@ Built with **FastAPI**, **spaCy**, and **scikit-learn**, it offers real-time, ru
 
 ## 🏗️ Architecture
 
-![System Diagram](assets/architecture.png)
+![System Diagram](architecture.png)
