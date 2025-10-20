@@ -1,0 +1,471 @@
+<!-- app/static/index.html (DROP-IN REPLACEMENT)
+Fixes:
+  • Next Question: cache pendingNextQuestion BEFORE resetForNext() so TTS fires
+  • Mode change: auto-(re)start session with selected mode, update & speak question
+-->
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>VoicePrep — Resume ↔ JD Demo</title>
+<style>
+  body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell; margin: 2rem; }
+  button { padding: .6rem 1rem; border-radius: .6rem; border: 1px solid #ddd; cursor: pointer; }
+  .row { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+  .card { border: 1px solid #eee; border-radius: 12px; padding: 16px; margin-bottom: 16px; }
+  .muted { color: #666; }
+  textarea { width: 100%; }
+  input[type=file] { max-width: 300px; }
+  ul { margin: 8px 0 0 18px; }
+  select { padding: .5rem; border-radius: .5rem; border: 1px solid #ddd; }
+  .pill { font-size:.85rem; padding:.2rem .5rem; border:1px solid #eee; border-radius:999px; }
+  .timer { font-variant-numeric: tabular-nums; }
+  .qa { background:#fcfcff; }
+  .scoregrid { display:grid; grid-template-columns: repeat(5, minmax(0,1fr)); gap:8px; margin-top:8px; }
+  .scorecell { background:#f5f7fb; border:1px solid #eef1f6; border-radius:8px; padding:6px; text-align:center; }
+  .tipslist { margin:8px 0 0 18px; }
+  .interim { font-style: italic; color:#888; margin-top:6px; min-height:1.2em; }
+  .success { background:#f0fff4; border-color:#c6f6d5; }
+  .warn { background:#fffaf0; border-color:#feebc8; }
+  .info { background:#f0f7ff; border-color:#cfe3ff; }
+</style>
+</head>
+<body>
+<h1>VoicePrep — Upload Resume & Paste Job Description</h1>
+
+<!-- Upload & Match -->
+<div class="card">
+  <h3>1) Upload Resume + Paste JD</h3>
+  <div class="row">
+    <input id="company" placeholder="Company"  />
+    <input id="role" placeholder="Role"  />
+    <span id="matchBadge" class="pill muted" style="display:none;"></span>
+  </div>
+  <div class="row" style="margin-top:8px;">
+    <input id="resume" type="file" accept=".txt,.pdf,.doc,.docx" />
+  </div>
+  <textarea id="jd_text" rows="8" placeholder="Paste the job description here..."></textarea>
+  <div class="row" style="margin-top:8px;">
+    <button id="upload">Upload & Match</button>
+    <button id="speakTips" style="display:none">🔈 Speak Tips</button>
+  </div>
+  <pre id="match" class="muted" style="white-space:pre-wrap"></pre>
+
+  <div id="tipsCard" class="card" style="display:none; background:#fafafa;">
+    <h4>Talking Points for Your Interview</h4>
+    <ul id="tipsList"></ul>
+  </div>
+
+  <div id="highlightsCard" class="card" style="display:none; background:#fbfbfb;">
+    <div class="row" style="justify-content:space-between; align-items:center;">
+      <h4 style="margin:0;">Use this from your résumé</h4>
+      <button id="speakHighlights" style="display:none;">🔈 Speak These</button>
+    </div>
+    <ul id="highlightsList"></ul>
+  </div>
+
+  <div id="scriptsCard" class="card" style="display:none; background:#f7fbff;">
+    <h4>Micro-Scripts (2–3 pointers per question)</h4>
+    <div class="row">
+      <select id="scriptSelect">
+        <option value="tell_me_about_yourself">Tell me about yourself</option>
+        <option value="why_company_role">Why this company / role?</option>
+        <option value="role_alignment">How you fit the role</option>
+        <option value="project_deep_dive">Project deep dive</option>
+        <option value="gap_handling">Addressing gaps</option>
+        <option value="closing_pitch">Closing pitch</option>
+      </select>
+      <button id="speakScript">🔈 Speak Pointers</button>
+    </div>
+    <ul id="scriptBullets" style="margin-top:8px;"></ul>
+  </div>
+</div>
+
+<!-- Live Prep -->
+<div class="card">
+  <h3>2) Live Prep (Voice) — adaptive Qs + rubric scoring</h3>
+  <div class="row">
+    <select id="mode">
+      <option value="auto">auto</option>
+      <option value="behavioral">behavioral</option>
+      <option value="technical">technical</option>
+      <option value="company">company</option>
+    </select>
+    <button id="start">Start Session</button>
+    <button id="micStart">🎤 Start Mic</button>
+    <button id="micStop">⏹ Stop Mic</button>
+    <button id="skipQuestion" disabled>⤼ Skip Question</button>
+    <button id="nextQuestion" disabled>➡️ Next Question</button>
+    <button id="endSession" disabled>🏁 End Session</button>
+    <span id="qid" class="muted"></span>
+  </div>
+  <div class="row">
+    <span class="muted">Timer:</span>
+    <span id="timer" class="pill timer">00:00</span>
+    <span id="timerTip" class="muted"></span>
+  </div>
+  <p id="question" class="muted"></p>
+  <textarea id="answer" rows="5" placeholder="Speak or type your answer here..."></textarea>
+  <div id="interim" class="interim"></div>
+  <div class="row" style="margin-top:8px;">
+    <button id="submit">Submit Answer</button>
+  </div>
+  <pre id="scores" class="muted"></pre>
+  <div id="sessionMsg" class="card info" style="display:none;"></div>
+</div>
+
+<!-- Q&A History -->
+<div class="card">
+  <h3>3) Session History</h3>
+  <div id="history"></div>
+</div>
+
+<!-- Download Brief -->
+<div class="card">
+  <h3>4) Download Prep Brief (uses Match + Session)</h3>
+  <div class="row">
+    <button id="download">Download Brief</button>
+  </div>
+</div>
+
+<script>
+/* ===================== Voice Helpers (TTS/STT) ===================== */
+function stopSpeaking(){ try { window.speechSynthesis.cancel(); } catch(e){} }
+function speakNow(text){
+  if (!text) return;
+  try {
+    stopSpeaking();
+    const u = new SpeechSynthesisUtterance(text);
+    u.lang = 'en-US';
+    window.speechSynthesis.speak(u);
+  } catch(e){}
+}
+function speakList(items){ if (!items || !items.length) return; speakNow(items.join(". ") + "."); }
+
+/* ---------------- STT (no auto-clear; interim separate) ---------------- */
+let rec=null, recognizing=false;
+let recordStartTs=null, timerInterval=null, lastAnswerDurationSec=0;
+let pendingNextQuestion=null; // next question to show after Submit/Skip
+let sessionActive=false;
+
+function formatMMSS(s){ s=Math.max(0,Math.floor(s)); const mm=String(Math.floor(s/60)).padStart(2,'0'); const ss=String(s%60).padStart(2,'0'); return `${mm}:${ss}`; }
+function setTimer(val){ document.getElementById('timer').textContent = val; }
+function startTimer(){
+  clearInterval(timerInterval);
+  const start = Date.now();
+  recordStartTs = start;
+  timerInterval = setInterval(()=>{
+    const elapsed = (Date.now() - start)/1000;
+    setTimer(formatMMSS(elapsed));
+    document.getElementById('timerTip').textContent = elapsed>120 ? " (running long — aim for 60–90s)" : "";
+  }, 200);
+}
+function stopTimer(){
+  clearInterval(timerInterval);
+  timerInterval = null;
+  const elapsed = recordStartTs ? (Date.now() - recordStartTs)/1000 : 0;
+  lastAnswerDurationSec = Math.max(0, Math.round(elapsed));
+  recordStartTs = null;
+}
+
+function initSTT(){
+  const SR=window.SpeechRecognition||window.webkitSpeechRecognition; if(!SR){return null;}
+  const r=new SR(); r.continuous=true; r.interimResults=true; r.lang='en-US';
+  r.onresult=(e)=>{
+    let interimChunk="", finals=[];
+    for(let i=e.resultIndex;i<e.results.length;i++){
+      const t=e.results[i][0].transcript;
+      if(e.results[i].isFinal){ finals.push(t); } else { interimChunk += t + " "; }
+    }
+    document.getElementById('interim').textContent = interimChunk ? ("… " + interimChunk.trim()) : "";
+    if(finals.length){
+      const ta=document.getElementById('answer');
+      ta.value = (ta.value + " " + finals.join(" ")).trim();
+      document.getElementById('interim').textContent = "";
+    }
+  };
+  r.onend=()=>{recognizing=false;};
+  r.onerror=(e)=>console.warn('STT',e);
+  return r;
+}
+document.addEventListener('DOMContentLoaded',()=>{rec=initSTT(); setTimer("00:00");});
+
+async function startMic(){ if(rec && !recognizing){ recognizing=true; rec.start(); startTimer(); }}
+async function stopMic(){ if(rec && recognizing){ recognizing=false; rec.stop(); stopTimer(); }}
+document.getElementById('micStart').onclick = startMic;
+document.getElementById('micStop').onclick = stopMic;
+
+/* ========================= App State ========================= */
+let sessionId=null, matchId=null, talkingPoints=[], highlights=[], microBullets={};
+const historyScores = []; // for End Session summary
+
+/* ========================= Upload & Match ========================= */
+document.getElementById('upload').onclick=async()=>{
+  const company=document.getElementById('company').value||'[Company]';
+  const role=document.getElementById('role').value||'[Role]';
+  const resume=document.getElementById('resume').files[0];
+  const jdText=document.getElementById('jd_text')?.value || '';
+  if(!resume) return alert('Please choose a resume file.');
+  if(!jdText.trim()) return alert('Please paste the job description.');
+
+  const fd=new FormData();
+  fd.append('company', company);
+  fd.append('role', role);
+  fd.append('resume', resume);
+  fd.append('jd_text', jdText);
+
+  const res=await fetch('/api/match/upload',{method:'POST', body: fd});
+  const data=await res.json();
+  if(!res.ok){ return alert('Upload failed: '+(data.detail||res.status)); }
+
+  matchId=data.match_id;
+  talkingPoints = data.talking_points || [];
+  highlights = data.resume_highlights || [];
+  microBullets = data.micro_scripts_bullets || {};
+
+  const badge = document.getElementById('matchBadge');
+  badge.style.display = 'inline-block';
+  badge.textContent = `Composite ${data.composite_score} • Skill ${Math.round(data.skill_coverage_score*100)}% • Keyword ${Math.round(data.coverage_score*100)}%`;
+
+  document.getElementById('match').textContent = `Overlap Skills: ${ (data.skill_overlap||[]).slice(0,6).join(", ") || "—" }`;
+
+  const tipsList = document.getElementById('tipsList');
+  tipsList.innerHTML = "";
+  (talkingPoints || []).forEach(t => { const li = document.createElement('li'); li.textContent = t; tipsList.appendChild(li); });
+  document.getElementById('tipsCard').style.display = (talkingPoints && talkingPoints.length) ? 'block' : 'none';
+
+  const hlList = document.getElementById('highlightsList');
+  hlList.innerHTML = "";
+  (highlights || []).forEach(h => { const li = document.createElement('li'); li.textContent = h; hlList.appendChild(li); });
+  const hasHighlights = (highlights && highlights.length);
+  document.getElementById('highlightsCard').style.display = hasHighlights ? 'block' : 'none';
+  document.getElementById('speakHighlights').style.display = hasHighlights ? 'inline-block' : 'none';
+
+  const ul = document.getElementById('scriptBullets');
+  const sel = document.getElementById('scriptSelect');
+  const render = () => {
+    ul.innerHTML = "";
+    const items = microBullets[sel.value] || [];
+    items.forEach(b => { const li=document.createElement('li'); li.textContent=b; ul.appendChild(li); });
+  };
+  document.getElementById('scriptsCard').style.display = Object.keys(microBullets).length ? 'block' : 'none';
+  sel.onchange = render; render();
+
+  if (talkingPoints && talkingPoints.length) {
+    speakList(talkingPoints);
+    document.getElementById('speakTips').style.display = 'inline-block';
+  }
+};
+
+// Speak buttons
+document.getElementById('speakTips').onclick = () => { speakList(talkingPoints); };
+document.getElementById('speakHighlights').onclick = () => { speakList(highlights); };
+document.getElementById('speakScript').onclick = () => {
+  const sel = document.getElementById('scriptSelect');
+  const items = microBullets[sel.value] || [];
+  if (items.length) { speakList(items); }
+};
+
+/* ========================= Live Prep ========================= */
+// helper to (re)start a session with current mode (used by Start and mode change)
+async function startOrSwitchSession(withMode){
+  const mode = withMode || (document.getElementById('mode').value || 'auto');
+  const res = await fetch('/api/live/start', {
+    method: 'POST',
+    headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ match_id: matchId || null, mode })
+  });
+  const data = await res.json();
+  sessionId = data.session_id;
+  sessionActive = true;
+  setControls(true);
+  document.getElementById('qid').textContent = `Session: ${sessionId.slice(0,8)}…`;
+  setQuestionText(data.question);
+  resetForNext();
+  document.getElementById('sessionMsg').style.display = 'none';
+  historyScores.length = 0;
+  // 🗣️ Speak question
+  speakNow(data.question);
+  return data;
+}
+
+document.getElementById('start').onclick = async () => {
+  await startOrSwitchSession();
+};
+
+// NEW: auto change & announce when mode is changed (even if not started yet)
+document.getElementById('mode').addEventListener('change', async (e) => {
+  await startOrSwitchSession(e.target.value);
+});
+
+function setControls(enabled){
+  document.getElementById('skipQuestion').disabled = !enabled;
+  document.getElementById('nextQuestion').disabled = true; // enabled after submit/skip sets a next
+  document.getElementById('endSession').disabled = !enabled;
+}
+
+function setQuestionText(q){ document.getElementById('question').textContent = q; }
+function resetForNext(){
+  setTimer("00:00"); document.getElementById('timerTip').textContent = "";
+  document.getElementById('answer').value = "";
+  document.getElementById('interim').textContent = "";
+  pendingNextQuestion = null;
+  document.getElementById('nextQuestion').disabled = true;
+}
+
+// Submit Answer (scores + history, does NOT advance)
+document.getElementById('submit').onclick = async () => {
+  if (!sessionId || !sessionActive) return alert('Start a session first');
+  if (recognizing) await stopMic();
+
+  const answer = document.getElementById('answer').value.trim();
+  const res = await fetch('/api/live/answer', {
+    method: 'POST',
+    headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({session_id: sessionId, answer_text: answer})
+  });
+  const data = await res.json();
+
+  const sc = data.scores || {};
+  const tipsArr = sc.tips || [];
+  let table =
+`Overall: ${sc.overall ?? "-"}\n` +
+` • Coverage: ${sc.coverage ?? "-"}\n` +
+` • Structure: ${sc.structure ?? "-"}\n` +
+` • Specificity: ${sc.specificity ?? "-"}\n` +
+` • Clarity: ${sc.clarity ?? "-"}\n` +
+` • Alignment: ${sc.alignment ?? "-"}\n` +
+`Tips: ${tipsArr.join(" | ")}`;
+  if (lastAnswerDurationSec > 120) {
+    table += `\nTiming tip: Aim for 60–90 seconds. Your last answer was ${lastAnswerDurationSec}s.`;
+  }
+  document.getElementById('scores').textContent = table;
+
+  // Append to history
+  appendHistoryCard({
+    question: document.getElementById('question').textContent,
+    answer: answer,
+    scores: sc,
+    duration: lastAnswerDurationSec
+  });
+  if (typeof sc.overall === 'number') historyScores.push(sc.overall);
+
+  // Prepare (but do not show) next question
+  pendingNextQuestion = data.next_question;
+  document.getElementById('nextQuestion').disabled = !pendingNextQuestion;
+
+  // 🎧 Speak feedback tips only
+  if (data.feedback_speech) {
+    speakNow(data.feedback_speech);
+  } else if (tipsArr && tipsArr.length) {
+    speakList(tipsArr);
+  } else {
+    speakNow("Nice work. Consider using Situation, Action, and Result with one measurable outcome.");
+  }
+
+  // Clear current answer area now that it's submitted
+  document.getElementById('answer').value = "";
+  document.getElementById('interim').textContent = "";
+  setTimer("00:00"); document.getElementById('timerTip').textContent = "";
+};
+
+// Skip Question: advances immediately (no history), announces next
+document.getElementById('skipQuestion').onclick = async () => {
+  if (!sessionId || !sessionActive) return;
+  if (recognizing) await stopMic();
+
+  const res = await fetch('/api/live/answer', {
+    method: 'POST',
+    headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({session_id: sessionId, answer_text: ""})
+  });
+  const data = await res.json();
+
+  // Immediately advance and announce
+  setQuestionText(data.next_question);
+  resetForNext();
+  speakNow(data.next_question);
+
+  // We just moved to the new question, so no pending
+  pendingNextQuestion = null;
+  document.getElementById('nextQuestion').disabled = true;
+};
+
+// Next Question (manual only): display + announce
+document.getElementById('nextQuestion').onclick = () => {
+  if (!pendingNextQuestion) return;
+  // IMPORTANT FIX: cache before resetForNext() clears it
+  const nextQ = pendingNextQuestion;
+  setQuestionText(nextQ);
+  resetForNext();
+  // ensure DOM updated before speaking
+  requestAnimationFrame(() => speakNow(nextQ));
+};
+
+function appendHistoryCard({question, answer, scores, duration}){
+  const host = document.getElementById('history');
+  const card = document.createElement('div');
+  card.className = 'card qa';
+  const tips = (scores.tips||[]).map(t=>`<li>${escapeHtml(t)}</li>`).join("");
+  card.innerHTML = `
+    <div><strong>Q:</strong> ${escapeHtml(question)}</div>
+    <div style="margin-top:6px;"><strong>Your answer (${duration||0}s):</strong><br><pre style="white-space:pre-wrap;margin:6px 0;">${escapeHtml(answer||"")}</pre></div>
+    <div class="scoregrid">
+      <div class="scorecell">Overall<br><strong>${scores.overall ?? "-"}</strong></div>
+      <div class="scorecell">Coverage<br><strong>${scores.coverage ?? "-"}</strong></div>
+      <div class="scorecell">Structure<br><strong>${scores.structure ?? "-"}</strong></div>
+      <div class="scorecell">Specificity<br><strong>${scores.specificity ?? "-"}</strong></div>
+      <div class="scorecell">Clarity<br><strong>${scores.clarity ?? "-"}</strong></div>
+    </div>
+    <div style="margin-top:8px;"><strong>Tips</strong><ul class="tipslist">${tips}</ul></div>
+  `;
+  host.prepend(card);
+}
+
+/* ========================= End Session ========================= */
+document.getElementById('endSession').onclick = () => {
+  if (!sessionActive) return;
+  sessionActive = false;
+  document.getElementById('skipQuestion').disabled = true;
+  document.getElementById('nextQuestion').disabled = true;
+  if (recognizing) stopMic();
+
+  const msgBox = document.getElementById('sessionMsg');
+  let msg = "";
+  const LOW = 6.0, MID = 8.0;
+
+  if (historyScores.length === 0) {
+    msg = "Nice effort! Try answering at least one question to get a personalized summary. You’ve got this!";
+    msgBox.className = "card info";
+  } else {
+    const avg = +(historyScores.reduce((a,b)=>a+b,0) / historyScores.length).toFixed(1);
+    if (avg < LOW) {
+      msg = `Thanks for practicing! Your average score was ${avg}. Focus on stating the question upfront, using S→A→R, and adding one metric. You’re improving every rep — you’ll do great!`;
+      msgBox.className = "card warn";
+    } else if (avg < MID) {
+      msg = `Good session — average ${avg}. What worked: relevance and clarity. Next time, add one measurable result and name 1–2 tools to ace it. You’ve got this!`;
+      msgBox.className = "card info";
+    } else {
+      msg = `Awesome session — average ${avg}! Strong structure and specificity; you seem ready. Keep this momentum and good luck!`;
+      msgBox.className = "card success";
+    }
+  }
+  msgBox.textContent = msg;
+  msgBox.style.display = "block";
+  speakNow(msg);
+};
+
+function escapeHtml(s){ return (s||"").replace(/[&<>"']/g, c=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c])); }
+
+/* ========================= Download Brief ========================= */
+document.getElementById('download').onclick = async () => {
+  if (!sessionId) return alert('Start a session first');
+  const company = encodeURIComponent(document.getElementById('company').value || '[Company]');
+  const role = encodeURIComponent(document.getElementById('role').value || '[Role]');
+  const url = `/api/briefs/${sessionId}.pdf?company=${company}&role=${role}` + (matchId ? `&match_id=${matchId}` : '');
+  const a = document.createElement('a'); a.href = url; a.download = `Interview_Prep_Brief_${sessionId}.pdf`; document.body.appendChild(a); a.click(); a.remove();
+};
+</script>
+</body>
+</html>
